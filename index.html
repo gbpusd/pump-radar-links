@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#111c27">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Pump Radar | Chart</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:#e9f2f5;background:#101a25}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:22px;background:radial-gradient(ellipse at 75% 10%,#1b3a45 0,transparent 58%),linear-gradient(145deg,#0c1722,#122431)}
+    .panel{width:min(100%,390px);border:1px solid #355062;border-radius:19px;background:#152735;box-shadow:0 22px 55px #03080d80;overflow:hidden}
+    .header{display:flex;align-items:center;gap:11px;padding:20px 22px;background:#132330;border-bottom:1px solid #2b4253}
+    .mark{width:40px;height:40px;border-radius:13px;display:grid;place-items:center;background:#1c3a46;color:#46d6aa}
+    .header h1{font-size:15px;font-weight:700;margin:0;letter-spacing:.3px}
+    .header p{margin:3px 0 0;color:#93abb9;font-size:12px}
+    main{padding:25px 22px 22px}
+    .eyebrow{color:#97b0be;font-size:12px;letter-spacing:1px;font-weight:600}
+    .coin{display:flex;align-items:center;gap:8px;margin:10px 0 20px;flex-wrap:wrap}
+    .symbol{font-size:27px;font-weight:750;letter-spacing:.3px;overflow-wrap:anywhere}
+    .tf{padding:5px 10px;border-radius:8px;background:#284153;color:#e1b56b;font-size:12px;font-weight:750}
+    .primary,.secondary,button{font:inherit;cursor:pointer;width:100%;border-radius:11px;padding:14px 12px;text-align:center;font-weight:650;font-size:14px}
+    .primary{display:block;color:#09291e;text-decoration:none;background:#42d6a7;border:1px solid #61efc0}
+    .primary:focus-visible,.secondary:focus-visible,button:focus-visible{outline:2px solid #ffcf79;outline-offset:3px}
+    .secondary{display:block;margin-top:10px;color:#bfdbe9;background:#233b4d;text-decoration:none;border:1px solid #385769}
+    button{margin-top:10px;color:#adc6d3;background:transparent;border:1px solid #395362}
+    .help{color:#91a9b7;font-size:12px;line-height:1.5;margin:17px 0 0}
+    .error{color:#f2a2a9}
+    .hidden{display:none}
+  </style>
+</head>
+<body>
+  <section class="panel" aria-label="CryptoFuturesScanner chart shortcut">
+    <header class="header">
+      <div class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"><path d="M3 18l6-7 4 3 8-10"/><path d="M16 4h5v5"/><path d="M3 22h18"/></svg>
+      </div>
+      <div><h1>PUMP RADAR</h1><p>CryptoFuturesScanner Android</p></div>
+    </header>
+    <main>
+      <div class="eyebrow">ОТКРЫТЬ ГРАФИК</div>
+      <div class="coin"><span id="symbol" class="symbol">—</span><span id="tf" class="tf">H4</span></div>
+      <a class="primary" id="intentLink" href="#">Открыть в скринере</a>
+      <a class="secondary" id="schemeLink" href="#">Открыть другим способом</a>
+      <button type="button" id="copy">Скопировать тикер</button>
+      <p class="help" id="help">Если Telegram не переключил приложение, открой эту страницу во внешнем браузере Chrome.</p>
+    </main>
+  </section>
+<script>
+(function(){
+  'use strict';
+  const q=new URLSearchParams(window.location.search);
+  const raw=(q.get('symbol')||'').trim().toUpperCase();
+  const tfInput=(q.get('tf')||'H4').toUpperCase();
+  const supported=new Set(['M1','M5','M15','M30','H1','H4','D1']);
+  const tf=supported.has(tfInput)?tfInput:'H4';
+  const valid=/^[A-Z0-9]{4,30}$/.test(raw);
+  const symbol=document.getElementById('symbol');
+  const tfLabel=document.getElementById('tf');
+  const intentLink=document.getElementById('intentLink');
+  const schemeLink=document.getElementById('schemeLink');
+  const help=document.getElementById('help');
+  const copy=document.getElementById('copy');
+  tfLabel.textContent=tf;
+  if(!valid){
+    symbol.textContent='Нет тикера';
+    symbol.classList.add('error');
+    intentLink.classList.add('hidden');
+    schemeLink.classList.add('hidden');
+    copy.classList.add('hidden');
+    help.textContent='Ссылка на график некорректна. Открой сообщение Pump Radar ещё раз.';
+    return;
+  }
+  symbol.textContent=raw;
+  const encoded=encodeURIComponent(raw);
+  // Both addresses resolve to cryptoscanner://chart?symbol=XXX&tf=H4.
+  const params='?symbol='+encoded+'&tf='+encodeURIComponent(tf);
+  intentLink.href='intent://chart'+params+'#Intent;scheme=cryptoscanner;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end';
+  schemeLink.href='cryptoscanner://chart'+params;
+  copy.addEventListener('click',async function(){
+    try{
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        await navigator.clipboard.writeText(raw);
+      }else{
+        const temp=document.createElement('textarea');
+        temp.value=raw;temp.style.position='fixed';temp.style.opacity='0';
+        document.body.appendChild(temp);temp.select();
+        if(!document.execCommand('copy'))throw new Error('copy failed');
+        temp.remove();
+      }
+      copy.textContent='Скопировано: '+raw;
+    }catch(_){
+      copy.textContent='Скопируй тикер вручную: '+raw;
+    }
+  });
+})();
+</script>
+</body>
+</html>
