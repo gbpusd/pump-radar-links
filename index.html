@@ -7,6 +7,7 @@
   <meta name="theme-color" content="#111c27">
   <meta name="robots" content="noindex,nofollow">
   <title>Pump Radar | Chart</title>
+  <meta name="referrer" content="no-referrer">
   <style>
     :root{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:#e9f2f5;background:#101a25}
     *{box-sizing:border-box}
@@ -29,6 +30,12 @@
     .help{color:#91a9b7;font-size:12px;line-height:1.5;margin:17px 0 0}
     .error{color:#f2a2a9}
     .hidden{display:none}
+    .opening{display:flex;align-items:center;gap:9px;color:#8bdcbf;font-size:12px;line-height:1.45;margin:-8px 0 17px}
+    .opening[hidden]{display:none}
+    .spinner{flex:none;width:13px;height:13px;border:2px solid #2d6b66;border-top-color:#51d6aa;border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @media (prefers-reduced-motion:reduce){.spinner{animation:none}}
+
   </style>
 </head>
 <body>
@@ -42,6 +49,10 @@
     <main>
       <div class="eyebrow">ОТКРЫТЬ ГРАФИК</div>
       <div class="coin"><span id="symbol" class="symbol">—</span><span id="tf" class="tf">H4</span></div>
+      <div class="opening" id="opening" role="status" aria-live="polite" hidden>
+        <span class="spinner" id="openingSpinner" aria-hidden="true"></span>
+        <span id="openingText">Пробуем открыть скринер автоматически…</span>
+      </div>
       <a class="primary" id="intentLink" href="#">Открыть в скринере</a>
       <a class="secondary" id="schemeLink" href="#">Открыть другим способом</a>
       <button type="button" id="copy">Скопировать тикер</button>
@@ -51,50 +62,87 @@
 <script>
 (function(){
   'use strict';
-  const q=new URLSearchParams(window.location.search);
-  const raw=(q.get('symbol')||'').trim().toUpperCase();
-  const tfInput=(q.get('tf')||'H4').toUpperCase();
-  const supported=new Set(['M1','M5','M15','M30','H1','H4','D1']);
-  const tf=supported.has(tfInput)?tfInput:'H4';
-  const valid=/^[A-Z0-9]{4,30}$/.test(raw);
-  const symbol=document.getElementById('symbol');
-  const tfLabel=document.getElementById('tf');
-  const intentLink=document.getElementById('intentLink');
-  const schemeLink=document.getElementById('schemeLink');
-  const help=document.getElementById('help');
-  const copy=document.getElementById('copy');
-  tfLabel.textContent=tf;
+  const q = new URLSearchParams(location.search);
+  const raw = (q.get('symbol')||'').trim().toUpperCase();
+  const requestedTf = (q.get('tf')||'H4').toUpperCase();
+  const supported = new Set(['M1','M5','M15','M30','H1','H4','D1']);
+  const tf = supported.has(requestedTf) ? requestedTf : 'H4';
+  const valid = /^[A-Z0-9]{4,30}$/.test(raw);
+  const symbol = document.getElementById('symbol');
+  const tfLabel = document.getElementById('tf');
+  const intentLink = document.getElementById('intentLink');
+  const schemeLink = document.getElementById('schemeLink');
+  const help = document.getElementById('help');
+  const copy = document.getElementById('copy');
+  const opening = document.getElementById('opening');
+  const openingText = document.getElementById('openingText');
+  const openingSpinner = document.getElementById('openingSpinner');
+
+  tfLabel.textContent = tf;
   if(!valid){
-    symbol.textContent='Нет тикера';
+    symbol.textContent = 'Нет тикера';
     symbol.classList.add('error');
     intentLink.classList.add('hidden');
     schemeLink.classList.add('hidden');
     copy.classList.add('hidden');
-    help.textContent='Ссылка на график некорректна. Открой сообщение Pump Radar ещё раз.';
+    help.textContent = 'Ссылка на график некорректна. Открой сообщение Pump Radar ещё раз.';
     return;
   }
-  symbol.textContent=raw;
-  const encoded=encodeURIComponent(raw);
-  // Both addresses resolve to cryptoscanner://chart?symbol=XXX&tf=H4.
-  const params='?symbol='+encoded+'&tf='+encodeURIComponent(tf);
-  intentLink.href='intent://chart'+params+'#Intent;scheme=cryptoscanner;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end';
-  schemeLink.href='cryptoscanner://chart'+params;
-  copy.addEventListener('click',async function(){
+
+  symbol.textContent = raw;
+  const params = '?symbol=' + encodeURIComponent(raw) + '&tf=' + encodeURIComponent(tf);
+  // These two user-click links are the tested fallback. Do not remove them.
+  intentLink.href = 'intent://chart' + params + '#Intent;scheme=cryptoscanner;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end';
+  schemeLink.href = 'cryptoscanner://chart' + params;
+
+  copy.addEventListener('click', async function(){
     try{
       if(navigator.clipboard && navigator.clipboard.writeText){
         await navigator.clipboard.writeText(raw);
-      }else{
-        const temp=document.createElement('textarea');
-        temp.value=raw;temp.style.position='fixed';temp.style.opacity='0';
-        document.body.appendChild(temp);temp.select();
-        if(!document.execCommand('copy'))throw new Error('copy failed');
+      } else {
+        const temp = document.createElement('textarea');
+        temp.value = raw;
+        temp.style.position = 'fixed';
+        temp.style.opacity = '0';
+        document.body.appendChild(temp);
+        temp.select();
+        const ok = document.execCommand('copy');
         temp.remove();
+        if(!ok) throw new Error('copy failed');
       }
-      copy.textContent='Скопировано: '+raw;
+      copy.textContent = 'Скопировано: ' + raw;
     }catch(_){
-      copy.textContent='Скопируй тикер вручную: '+raw;
+      copy.textContent = 'Скопируй тикер вручную: ' + raw;
     }
   });
+
+  // Experimental one-tap launch from Telegram's built-in Android browser.
+  // Chromium deliberately blocks some app-intent redirects without a user gesture.
+  // If blocked, the web page stays usable and the original click buttons remain.
+  // Use auto=0 as a loop-breaker for Android back navigation and the browser fallback.
+  const isAndroid = /Android/i.test(navigator.userAgent || '');
+  const skipAuto = q.get('auto') === '0';
+  if(!isAndroid || skipAuto) return;
+
+  const fallback = new URL(location.href);
+  fallback.searchParams.set('auto','0');
+  const fallbackIntent = intentLink.href.replace(/;end$/, ';S.browser_fallback_url=' + encodeURIComponent(fallback.href) + ';end');
+
+  opening.hidden = false;
+  help.textContent = 'Если скринер не открылся, нажми зелёную кнопку ниже.';
+  try {
+    // Revisit/back/refresh must never trigger a second automatic launch.
+    history.replaceState(null, '', fallback.href);
+    location.assign(fallbackIntent);
+  } catch (_) {
+    opening.hidden = true;
+  }
+  setTimeout(function(){
+    if(document.visibilityState === 'visible'){
+      openingSpinner.classList.add('hidden');
+      openingText.textContent = 'Если переход не произошёл, открой график кнопкой ниже.';
+    }
+  }, 1400);
 })();
 </script>
 </body>
